@@ -12,6 +12,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import os, joblib
 
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
@@ -51,6 +52,10 @@ model_name = st.sidebar.selectbox(
     index=0
 )
 
+use_saved = st.sidebar.checkbox("Use saved model if available", value=True)
+model_path = "models/best_pipeline.pkl"
+
+
 params = {}
 if model_name in ["Ridge", "Lasso"]:
     # Regularization strength
@@ -68,10 +73,15 @@ X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.20, random_state=42
 )
 
-# ---------------- Build & fit pipeline (features + preprocessing + model) ----------------
-# Note: We skip caching here; training is fast on this dataset.
-model = build_model_pipeline(model_name, **params)
-model.fit(X_train, y_train)
+# ---------------- Build & fit OR load ----------------
+if use_saved and os.path.exists(model_path):
+    # Load saved pipeline (features + preprocessor + regressor)
+    model = joblib.load(model_path)
+else:
+    # Train from scratch with the selected model & params
+    from src.model import build_model_pipeline
+    model = build_model_pipeline(model_name, **params)
+    model.fit(X_train, y_train)
 
 # ---------------- Evaluate ----------------
 y_pred = model.predict(X_test)
@@ -96,6 +106,90 @@ results = pd.DataFrame({
     "Predicted": y_pred
 })
 st.line_chart(results, use_container_width=True)
+
+# ---------------- Diagnostics (Residuals & Importances) ----------------
+st.subheader("Diagnostics")
+
+# Residuals = Actual - Predicted
+residuals = y_test.reset_index(drop=True) - y_pred
+
+# 1) Residuals histogram (kaç hata hangi aralıkta?)
+st.markdown("**Residuals histogram**")
+hist, bin_edges = np.histogram(residuals, bins=30)
+hist_df = pd.DataFrame({
+    "bin_left": bin_edges[:-1],
+    "bin_right": bin_edges[1:],
+    "count": hist,
+})
+hist_df["mid"] = (hist_df["bin_left"] + hist_df["bin_right"]) / 2
+st.bar_chart(hist_df.set_index("mid")["count"])
+
+# 2) Residuals vs Predicted (desen var mı?)
+st.markdown("**Residuals vs Predicted**")
+res_df = pd.DataFrame({"Predicted": y_pred, "Residual": residuals})
+st.scatter_chart(res_df, x="Predicted", y="Residual")
+
+# 3) Feature importances (RandomForest gibi ağaç modelleri için)
+reg = model.named_steps.get("regressor", None)
+if reg is not None and hasattr(reg, "feature_importances_"):
+    try:
+        pre = model.named_steps["preprocessing"]
+        feature_names = pre.get_feature_names_out()
+    except Exception:
+        feature_names = [f"f{i}" for i in range(len(reg.feature_importances_))]
+
+    imp_df = (pd.DataFrame({"feature": feature_names,
+                            "importance": reg.feature_importances_})
+              .sort_values("importance", ascending=False)
+              .head(20)
+              .reset_index(drop=True))
+    st.markdown("**Top feature importances**")
+    st.dataframe(imp_df, use_container_width=True)
+
+    # ---------------- Predict on New CSV ----------------
+st.subheader("Predict on New Data (Upload CSV)")
+
+uploaded = st.file_uploader(
+    "Upload a CSV with the same feature columns used for training (no target).",
+    type="csv"
+)
+
+if uploaded is not None:
+    new_df = pd.read_csv(uploaded)
+
+    # If user accidentally included target, drop it
+    if TARGET in new_df.columns:
+        new_df = new_df.drop(columns=[TARGET])
+
+    # Required columns check (model expects training-time feature columns)
+    required_cols = list(X.columns)   # X = df.drop(TARGET, axis=1)
+    missing = [c for c in required_cols if c not in new_df.columns]
+    extra   = [c for c in new_df.columns if c not in required_cols]
+
+    if missing:
+        st.error(f"Missing required columns: {missing}")
+    else:
+        # Reorder to match training column order; ignore extras
+        new_df = new_df[required_cols]
+
+        # Predict
+        preds = model.predict(new_df)
+
+        # Show & allow download
+        out = new_df.copy()
+        out["prediction"] = preds
+        st.write("### Predictions (first 50 rows)")
+        st.dataframe(out.head(50), use_container_width=True)
+
+        st.download_button(
+            label="Download predictions as CSV",
+            data=out.to_csv(index=False).encode("utf-8"),
+            file_name="predictions.csv",
+            mime="text/csv"
+        )
+
+    if extra:
+        st.info(f"Extra columns ignored: {extra}")
 
 # ---------------- Quick exploration (optional) ----------------
 st.sidebar.header("Explore numeric feature")

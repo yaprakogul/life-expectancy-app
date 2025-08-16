@@ -37,9 +37,7 @@ This repository contains a Streamlit app and EDA notebooks for exploring global 
   - Sidebar model selector: `Linear`, `Ridge`, `Lasso`, `RandomForest`
   - Basic hyperparameters in the UI (e.g., `alpha`, `n_estimators`, `max_depth`)
   - Displays **RMSE, MSE, R²** and an **Actual vs Predicted** line chart
-
 ---
-
 ### Evaluation Protocol
 - **Target column:** `"Life expectancy "`  
   > Note: there is a trailing space in the column name.
@@ -50,11 +48,57 @@ This repository contains a Streamlit app and EDA notebooks for exploring global 
   - **MSE:** squared error (years²)
   - **R²:** 0 = as good as predicting the mean, 1 = perfect, `< 0` = worse than mean
 - **Baseline (reference):** a naïve predictor that always outputs the training mean
-
 ---
-
 ### How to Run
 ```bash
 streamlit run app.py
 
 
+## Model Training & Comparison
+-This section focuses on model selection and evaluation using various regression algorithms. All models are built on top of a unified pipeline that includes feature engineering and preprocessing steps.
+### Models Used
+- `LinearRegression`  
+- `Ridge`  
+- `Lasso`  
+- `RandomForestRegressor`  
+Each model was trained and tested on the same dataset using consistent preprocessing and feature transformation logic.
+
+### Metrics
+-Evaluation was conducted using the following metrics:
+
+- **RMSE (Root Mean Squared Error):** Indicates the average error in prediction (in years).
+- **MSE (Mean Squared Error):** Penalizes larger errors more strongly than RMSE.
+- **R² Score:** Reflects how much variance in the target variable is explained by the model.
+
+All models were also compared against a **baseline predictor** that always outputs the mean of the training target values.
+
+### Visual Feedback
+A side-by-side comparison chart of model performances was included to help identify the most effective regressor. Additionally, an **Actual vs Predicted** line chart is displayed after each run to visualize accuracy and highlight under- or overfitting.
+
+
+### Finalization – Deployment and Testing
+## CSV Prediction Integration
+-File Upload Component added to the Streamlit app for uploading .csv test files.
+-Incoming test data must match the structure of the training features — the target column should be excluded.
+-Predictions are made using the fully-trained pipeline and displayed in a preview table (first 50 rows).
+-Users can download the predictions as a CSV using the "Download predictions" button.
+
+##Custom Test CSVs
+Example CSVs were constructed and tested with realistic data, such as:
+Turkey (2025): Moderate alcohol use, no HIV/AIDS presence.
+Format was aligned with the training features and passed through the same preprocessing pipeline.
+
+
+##Feature Fixes
+-Verified inclusion of all original columns such as percentage expenditure, which was initially missing from test cases.
+-Ensured compatibility between training and test pipelines using column consistency checks.
+
+##UI Enhancements
+Clean sidebar layout for model selection and hyperparameter tuning.
+Improved display for metrics and plots, including:
+
+Residuals vs Predicted
+
+Actual vs Predicted
+
+Predictions displayed in real-time after upload.
